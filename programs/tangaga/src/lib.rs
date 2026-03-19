@@ -1,26 +1,22 @@
 use anchor_lang::prelude::*;
-use anchor_spl::associated_token::spl_associated_token_account::error::AssociatedTokenAccountError;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::metadata::ID as METADATA_PROGRAM_ID;
-use anchor_spl::token::{Mint, Token, TokenAccount};
+use anchor_lang::system_program;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_2022::{self, Token2022},
+    token_2022_extensions::{
+        metadata_pointer::{self, MetadataPointerInitialize},
+        token_metadata::{self, TokenMetadataInitialize},
+    },
+    token_interface::TokenAccount,
+};
 
-declare_id!("HxN1Z596K82cxETveoBQ8h8mQXxaVDmKwzgXR68Ykkbt");
+declare_id!("FZLKFcWiZbyyPqpyoG1uA1APveJC6Ex5e93wmaf63L9C");
 
 #[program]
 pub mod tangaga {
     use super::*;
-    use anchor_lang::solana_program::program::invoke;
-    use anchor_spl::metadata::mpl_token_metadata::instructions::{
-        CreateMetadataAccountV3, CreateMetadataAccountV3InstructionArgs,
-    };
-    use anchor_spl::metadata::mpl_token_metadata::types::DataV2;
-    use anchor_spl::token;
-    use anchor_spl::token::MintTo;
 
-    /// 我们的合约需要实现 3 个指令：
-    ///
-    /// 1. create_token    — 创建 Mint Account + Metadata Account
-    /// → 一个交易同时完成"定义代币 + 添加元信息"
+    /// 1. create_token — 创建 Token-2022 Mint，内嵌 MetadataPointer + Metadata extension
     pub fn create_token(
         ctx: Context<CreateToken>,
         name: String,
@@ -28,126 +24,145 @@ pub mod tangaga {
         uri: String,
         decimals: u8,
     ) -> Result<()> {
-        // ========== 参数校验 ==========
-        // Metaplex 对字段长度有限制，超出会导致交易失败
         require!(name.len() <= 32, CustomError::NameTooLong);
         require!(symbol.len() <= 10, CustomError::SymbolTooLong);
         require!(uri.len() <= 200, CustomError::UriTooLong);
 
-        // ========== 步骤 1：Mint Account 已由 Anchor 自动创建 ==========
-        // #[account(init, ...)] 约束在 CreateToken struct 中
-        // → Anchor 在执行这个函数之前，已经完成了：
-        //   1. 创建新账户（system_program.create_account）
-        //   2. 初始化为 Mint（token_program.initialize_mint）
-        // → 到这里，Mint Account 已经存在且已初始化
-        msg!("Mint Account 创建成功: {}", ctx.accounts.mint.key());
+        // ── 步骤 1：计算账户空间和 lamports ────────────────────────────
+        // create_account 大小 = mint + MetadataPointer（InitializeMint2 要求精确匹配）
+        // lamports = mint + MetadataPointer + Metadata 的 rent（预存，供 realloc 使用）
+        use anchor_spl::token_2022::spl_token_2022::{
+            extension::ExtensionType,
+            state::Mint as MintState,
+        };
+        use anchor_spl::token_2022_extensions::spl_token_metadata_interface::state::TokenMetadata;
 
-        let mint_key = ctx.accounts.mint.key();
-
-        let metadata_seeds = &[b"metadata", METADATA_PROGRAM_ID.as_ref(), mint_key.as_ref()];
-
-        let (meta_pda, _bump) = Pubkey::find_program_address(
-            metadata_seeds,
-            &Pubkey::new_from_array(METADATA_PROGRAM_ID.to_bytes()),
-        );
-
-        require_keys_eq!(
-            ctx.accounts.metadata.key(),
-            meta_pda,
-            CustomError::InvalidMetadata
-        );
-
-        //// 构建 Metaplex 的 CreateMetadataAccountV3 指令
-        let metadata_account_v3 = CreateMetadataAccountV3 {
-            metadata: ctx.accounts.metadata.key(),
-            mint: ctx.accounts.mint.key(),
-            mint_authority: ctx.accounts.authority.key(),
-            payer: ctx.accounts.authority.key(),
-            update_authority: (ctx.accounts.authority.key(), true),
-            system_program: ctx.accounts.system_program.key(),
-            rent: Some(ctx.accounts.rent.key()),
+        let token_metadata = TokenMetadata {
+            name: name.clone(),
+            symbol: symbol.clone(),
+            uri: uri.clone(),
+            ..Default::default()
         };
 
-        //指令数据
-        let data_v2 = DataV2 {
+        let base_mint_size =
+            ExtensionType::try_calculate_account_len::<MintState>(&[
+                ExtensionType::MetadataPointer,
+            ])
+            .unwrap();
+
+        let metadata_size = token_metadata.tlv_size_of().unwrap();
+        let full_size = base_mint_size + metadata_size;
+
+        let rent = Rent::get()?;
+        let lamports = rent.minimum_balance(full_size);
+        let mint_size = base_mint_size;
+
+        // ── 步骤 2：创建账户 ────────────────────────────────────────────
+        system_program::create_account(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::CreateAccount {
+                    from: ctx.accounts.authority.to_account_info(),
+                    to: ctx.accounts.mint.to_account_info(),
+                },
+            ),
+            lamports,
+            mint_size as u64,
+            &Token2022::id(),
+        )?;
+
+        // ── 步骤 3：初始化 MetadataPointer extension ────────────────────
+        metadata_pointer::metadata_pointer_initialize(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                MetadataPointerInitialize {
+                    token_program_id: ctx.accounts.token_program.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                },
+            ),
+            Some(ctx.accounts.authority.key()),
+            Some(ctx.accounts.mint.key()),
+        )?;
+
+        // ── 步骤 4：初始化 Mint ─────────────────────────────────────────
+        token_2022::initialize_mint2(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token_2022::InitializeMint2 {
+                    mint: ctx.accounts.mint.to_account_info(),
+                },
+            ),
+            decimals,
+            &ctx.accounts.authority.key(),
+            None,
+        )?;
+
+        // ── 步骤 5：初始化 Metadata extension ──────────────────────────
+        token_metadata::token_metadata_initialize(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                TokenMetadataInitialize {
+                    program_id: ctx.accounts.token_program.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    metadata: ctx.accounts.mint.to_account_info(), // self-referential
+                    mint_authority: ctx.accounts.authority.to_account_info(),
+                    update_authority: ctx.accounts.authority.to_account_info(),
+                },
+            ),
             name,
             symbol,
             uri,
-            seller_fee_basis_points: 0, //普通代币设为0 NFT才需要
-            creators: None,
-            collection: None,
-            uses: None,
-        };
+        )?;
 
-        //完整指令
-        let instruction = metadata_account_v3.instruction(CreateMetadataAccountV3InstructionArgs {
-            data: data_v2,
-            is_mutable: true,
-            collection_details: None,
-        });
-        let account_infos = vec![
-            ctx.accounts.metadata.to_account_info(),
-            ctx.accounts.mint.to_account_info(),
-            ctx.accounts.authority.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-            ctx.accounts.rent.to_account_info(),
-        ];
-
-        invoke(&instruction, &account_infos)?;
-        msg!("Metadata Account 创建成功");
-
-        msg!("代币创建完成！Mint:{},", ctx.accounts.mint.key());
-
+        msg!("Token-2022 Mint 创建成功: {}", ctx.accounts.mint.key());
         Ok(())
     }
 
-    ///
-    /// 2. mint_to_wallet  — 铸造代币到指定钱包的 ATA
-    /// → ATA 不存在则自动创建（init_if_needed）
+    /// 2. mint_to_wallet — 铸造代币到指定钱包的 ATA
     pub fn mint_to_wallet(ctx: Context<MintToWallet>, amount: u64) -> Result<()> {
         require!(amount > 0, CustomError::ZeroAmount);
-        // ========== ATA 已由 Anchor 自动创建（init_if_needed） ==========
-        // 如果目标钱包还没有这个代币的 ATA，Anchor 会自动创建
-        // 如果已经有了，就跳过创建步骤
 
-        // ========== CPI 调用 Token Program 铸造代币 ==========
-
-        let cpi_accounts = MintTo {
-            mint: ctx.accounts.mint.to_account_info(),
-            to: ctx.accounts.destination_ata.to_account_info(),
-            authority: ctx.accounts.authority.to_account_info(),
-        };
-
-        let cpi_context =
-            CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-
-        token::mint_to(cpi_context, amount)?; //
-
-        msg!(
-            "铸造成功！{} 代币 → {}",
+        token_2022::mint_to(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token_2022::MintTo {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.destination_ata.to_account_info(),
+                    authority: ctx.accounts.authority.to_account_info(),
+                },
+            ),
             amount,
-            ctx.accounts.destination_ata.key()
-        );
+        )?;
 
+        msg!("铸造成功！{} 代币 → {}", amount, ctx.accounts.destination_ata.key());
         Ok(())
     }
-    ///
+
     /// 3. transfer_tokens — 从一个钱包转代币到另一个钱包
-    /// → 演示代币转账的完整流程
-
-    pub fn transfer_tokens(ctx: Context<TransferTokens>,amount:u64) -> Result<()> {
-
+    pub fn transfer_tokens(ctx: Context<TransferTokens>, amount: u64) -> Result<()> {
         require!(amount > 0, CustomError::ZeroAmount);
 
-        let trans_accounts = anchor_spl::token::Transfer{
-            from: ctx.accounts.from_ata.to_account_info(),
-            to: ctx.accounts.to_ata.to_account_info(),
-            authority: ctx.accounts.owner.to_account_info(),
-        };
+        // 从 mint 账户数据中读取 decimals
+        use anchor_spl::token_2022::spl_token_2022::state::Mint as MintState;
+        use anchor_spl::token_2022::spl_token_2022::extension::StateWithExtensions;
+        let mint_data = ctx.accounts.mint.data.borrow();
+        let mint_state = StateWithExtensions::<MintState>::unpack(&mint_data)?;
+        let decimals = mint_state.base.decimals;
+        drop(mint_data);
 
-        let cpi_context = CpiContext::new(ctx.accounts.token_program.to_account_info(), trans_accounts);
-
-        token::transfer(cpi_context,amount)?;
+        token_2022::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token_2022::TransferChecked {
+                    from: ctx.accounts.from_ata.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.to_ata.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
+                },
+            ),
+            amount,
+            decimals,
+        )?;
 
         msg!(
             "转账成功！{} → {} (数量: {})",
@@ -159,126 +174,89 @@ pub mod tangaga {
     }
 }
 
+// ── 账户结构体 ──────────────────────────────────────────────────────────────
+
 #[derive(Accounts)]
-pub struct TransferTokens<'info> {
-
-    pub mint: Account<'info, Mint>,
-
-    /// 目标 ATA — 代币铸造到这里
-    /// init_if_needed: 如果 ATA 不存在就自动创建
-    /// associated_token::mint: 关联到哪个 Mint
-    /// associated_token::authority: ATA 归谁所有
-    #[account(
-    mut,
-    associated_token::mint = mint,
-    associated_token::authority = owner
-    )]
-    pub from_ata: Account<'info, TokenAccount>,
-
-    #[account(
-    init_if_needed,
-    payer=owner,
-    associated_token::mint = mint,
-    associated_token::authority =to_wallet
-    )]
-    pub to_ata: Account<'info, TokenAccount>,
-
-    /// 目标钱包地址 — ATA 的 owner（不需要签名，因为铸币不需要接收方同意）
-    ///CHECK: 任何公钥都可以接收代币
-    pub to_wallet: UncheckedAccount<'info>,
-
-    pub system_program:Program<'info,System>,
-
-    pub associated_token_program:Program<'info,AssociatedToken>,
-
-    ///发送方钱包
+#[instruction(name: String, symbol: String, uri: String, decimals: u8)]
+pub struct CreateToken<'info> {
+    /// CHECK: 在指令逻辑中手动 create_account + initialize
     #[account(mut)]
-    pub owner:Signer<'info>,
+    pub mint: Signer<'info>,
 
+    #[account(mut)]
+    pub authority: Signer<'info>,
 
-    pub token_program: Program<'info, Token>,
-
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[derive(Accounts)]
 pub struct MintToWallet<'info> {
-    #[account(mut)] //supply会增加
-    pub mint: Account<'info, Mint>,
+    /// CHECK: Token-2022 mint（含 metadata extension，不能用 Account<Mint>）
+    #[account(mut)]
+    pub mint: UncheckedAccount<'info>,
 
-    /// 目标 ATA — 代币铸造到这里
-    /// init_if_needed: 如果 ATA 不存在就自动创建
-    /// associated_token::mint: 关联到哪个 Mint
-    /// associated_token::authority: ATA 归谁所有
     #[account(
-    init_if_needed,
-    payer=authority,
-    associated_token::mint = mint,
-    associated_token::authority = destination_wallet
+        init_if_needed,
+        payer = authority,
+        associated_token::mint = mint,
+        associated_token::authority = destination_wallet,
+        associated_token::token_program = token_program,
     )]
-    pub destination_ata: Account<'info, TokenAccount>,
+    pub destination_ata: InterfaceAccount<'info, TokenAccount>,
 
-    /// 目标钱包地址 — ATA 的 owner（不需要签名，因为铸币不需要接收方同意）
-    ///CHECK: 任何公钥都可以接收代币
+    /// CHECK: 任何公钥都可以接收代币
     pub destination_wallet: UncheckedAccount<'info>,
 
-    /// mint_authority — 必须是 Mint 的 mint_authority（签名者）
-    #[account(mut,
-        constraint=authority.key()==mint.mint_authority.unwrap() @  CustomError::UnauthorizedMinter
-    )]
+    #[account(mut)]
     pub authority: Signer<'info>,
 
     pub system_program: Program<'info, System>,
-    ///if_need需要
-    pub token_program: Program<'info, Token>,
-
+    pub token_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 #[derive(Accounts)]
-#[instruction(name: String,
-        symbol: String,
-        uri: String,
-        decimals: u8,)]
-pub struct CreateToken<'info> {
+pub struct TransferTokens<'info> {
+    /// CHECK: Token-2022 mint
+    #[account(mut)]
+    pub mint: UncheckedAccount<'info>,
+
     #[account(
-        init,
-        payer=authority,
-        mint::decimals=decimals,
-        mint::authority = authority.key()
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = owner,
+        associated_token::token_program = token_program,
     )]
-    pub mint: Account<'info, Mint>,
+    pub from_ata: InterfaceAccount<'info, TokenAccount>,
 
-    /// Metadata Account — 由 Metaplex 管理的 PDA
-    /// 我们不用 Anchor 的 init（因为 Metaplex 自己创建），所以用 UncheckedAccount
-    /// CHECK: 地址在指令逻辑中通过 PDA 推导验证
-    #[account(mut)]
-    pub metadata: UncheckedAccount<'info>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        associated_token::mint = mint,
+        associated_token::authority = to_wallet,
+        associated_token::token_program = token_program,
+    )]
+    pub to_ata: InterfaceAccount<'info, TokenAccount>,
+
+    /// CHECK: 接收方钱包
+    pub to_wallet: UncheckedAccount<'info>,
 
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub owner: Signer<'info>,
 
     pub system_program: Program<'info, System>,
-
-    pub token_program: Program<'info, Token>,
-
-    pub rent: Sysvar<'info, Rent>,
-
-    /// Metaplex Token Metadata Program
-    /// CHECK: 我们验证它的地址等于 Metaplex 程序 ID
-    #[account(
-        constraint=token_metadata_program.key() == METADATA_PROGRAM_ID @ CustomError::InvalidMetadataProgram
-    )]
-    pub token_metadata_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
-#[derive(Accounts)]
-pub struct Initialize {}
+// ── 错误码 ──────────────────────────────────────────────────────────────────
 
 #[error_code]
 pub enum CustomError {
     #[msg("代币名称不能超过 32 个字符")]
     NameTooLong,
-
+    
     #[msg("代币符号不能超过 10 个字符")]
     SymbolTooLong,
 
@@ -288,15 +266,7 @@ pub enum CustomError {
     #[msg("铸造/转账数量必须大于 0")]
     ZeroAmount,
 
-    #[msg("余额不足")]
-    InsufficientBalance,
-
     #[msg("不是授权的铸币者")]
     UnauthorizedMinter,
-
-    #[msg("Metadata 账户地址不匹配")]
-    InvalidMetadata,
-
-    #[msg("Token Metadata 程序地址不正确")]
-    InvalidMetadataProgram,
+    
 }
