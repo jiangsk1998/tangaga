@@ -6,7 +6,6 @@ use anchor_spl::token_interface::MetadataPointerInitialize;
 use anchor_spl::token_interface::TokenMetadataInitialize;
 use anchor_spl::token_interface::metadata_pointer;
 use anchor_spl::token_interface::token_metadata;
-use crate::CustomError;
 
 
     pub fn create_token(

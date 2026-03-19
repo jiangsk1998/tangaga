@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token_2022::{self, Token2022}, token_interface::TokenAccount};
 
-use crate::CustomError;
+use crate::error::CustomError;
 
 
     /// 3. transfer_tokens — 从一个钱包转代币到另一个钱包
