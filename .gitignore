@@ -1,0 +1,78 @@
+# ==========================
+# Solana 合约开发核心忽略项
+# ==========================
+# 1. Rust 编译产物
+target/
+**/*.rs.bk
+*.rlib
+*.so
+*.dylib
+*.dll
+*.o
+*.out
+
+# 2. Solana 部署/构建临时文件
+dist/
+build/
+deploy/
+*.so.fresh
+*.keypair        # 私钥文件（核心！绝对不要提交）
+*.json           # 除非是合约元数据，否则部署生成的 JSON 多为临时配置
+!programs/**/*.json  # 例外：保留合约源码目录下的元数据 JSON
+.DS_Store        # macOS 系统文件
+
+# 3. 依赖缓存
+Cargo.lock       # 可选：如果是库开发建议保留，应用开发可忽略
+Cargo.bak
+.registry/
+.vendor/
+.rustup/
+.rustc/
+
+# ==========================
+# 开发工具/环境忽略项
+# ==========================
+# 1. IDE/编辑器配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# 2. 测试/日志文件
+tests/**/output/
+tests/**/tmp/
+*.log
+*.trace
+coverage/
+lcov.info
+.nyc_output/
+
+# 3. 系统/缓存文件
+.env             # 环境变量（含 RPC 地址、私钥等敏感信息）
+.env.local
+.env.*.local
+*.bak
+*.tmp
+*.cache
+.npm/
+.node_modules/
+.yarn/
+yarn.lock
+package-lock.json
+
+# 4. Solana CLI 本地配置
+.solana/         # Solana CLI 本地配置（含钱包、RPC 缓存等）
+!/.solana/id.json # 例外：如果需要共享只读的公钥文件可取消注释（不推荐）
+
+# 5. Docker 相关（如有容器化部署）
+.dockerignore
+Dockerfile.local
+*.dockerfile
