@@ -12,6 +12,7 @@ target/
 *.out
 
 # 2. Solana 部署/构建临时文件
+.anchor/
 dist/
 build/
 deploy/
