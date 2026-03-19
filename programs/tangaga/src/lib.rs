@@ -51,7 +51,7 @@ pub mod tangaga {
             .unwrap();
 
         let metadata_size = token_metadata.tlv_size_of().unwrap();
-        let full_size = base_mint_size + metadata_size;
+        let full_size = base_mint_size.checked_add(metadata_size).unwrap();
 
         let rent = Rent::get()?;
         let lamports = rent.minimum_balance(full_size);
