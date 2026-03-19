@@ -13,6 +13,7 @@ target/
 
 # 2. Solana 部署/构建临时文件
 .anchor/
+.anchor/**.**
 dist/
 build/
 deploy/
@@ -124,3 +125,7 @@ target/doc/
 
 # NetBeans
 nbproject/
+.anchor/test-ledger/test-ledger-log.txt
+.anchor/test-ledger/test-ledger-log.txt
+
+Cargo.lock
