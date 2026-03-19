@@ -481,38 +481,53 @@ pub mod tangaga {
         uri: String,
         decimals: u8,
     ) -> Result<()> {
-        require!(name.len() <= 32, CustomError::NameTooLong);
-        require!(symbol.len() <= 10, CustomError::SymbolTooLong);
-        require!(uri.len() <= 200, CustomError::UriTooLong);
+    // --- 业务逻辑：输入验证 ---
+    require!(name.len() <= 32, CustomError::NameTooLong);   // 验证名称长度，防止超过元数据预留空间
+    require!(symbol.len() <= 10, CustomError::SymbolTooLong); // 验证符号长度
+    require!(uri.len() <= 200, CustomError::UriTooLong);   // 验证 URI 链接长度
 
-        // ── 步骤 1：计算账户空间和 lamports ────────────────────────────
-        // create_account 大小 = mint + MetadataPointer（InitializeMint2 要求精确匹配）
-        // lamports = mint + MetadataPointer + Metadata 的 rent（预存，供 realloc 使用）
-        use anchor_spl::token_2022::spl_token_2022::{
-            extension::ExtensionType,
-            state::Mint as MintState,
-        };
-        use anchor_spl::token_2022_extensions::spl_token_metadata_interface::state::TokenMetadata;
+    // --- 引入底层依赖（用于处理 Token-2022 复杂的内存布局） ---
+    use anchor_spl::token_2022::spl_token_2022::{
+        extension::ExtensionType, // 用于标识扩展类型（如：元数据指针）
+        state::Mint as MintState, // 指代 Token-2022 的 Mint 账户基础结构
+    };
+    // 引入元数据接口，让我们可以像操作普通结构体一样操作链上元数据
+    use anchor_spl::token_2022_extensions::spl_token_metadata_interface::state::TokenMetadata;
 
-        let token_metadata = TokenMetadata {
-            name: name.clone(),
-            symbol: symbol.clone(),
-            uri: uri.clone(),
-            ..Default::default()
-        };
+    // --- 核心步骤 1：构建元数据对象模型 ---
+    // 在内存中创建一个临时对象，用来计算它实际上会占用多少字节
+    let token_metadata = TokenMetadata {
+        name: name.clone(),
+        symbol: symbol.clone(),
+        uri: uri.clone(),
+        ..Default::default() // 其他字段（如签名者）保持默认
+    };
 
-        let base_mint_size =
-            ExtensionType::try_calculate_account_len::<MintState>(&[
-                ExtensionType::MetadataPointer,
-            ])
-            .unwrap();
+    // --- 核心步骤 2：计算基础 Mint 账户的大小 ---
+    // Token-2022 的大小是不固定的！
+    // 这里计算：基础 Mint 空间 + “元数据指针(MetadataPointer)” 扩展插件所需的空间
+    let base_mint_size =
+        ExtensionType::try_calculate_account_len::<MintState>(&[
+            ExtensionType::MetadataPointer,
+        ])
+        .unwrap();
 
-        let metadata_size = token_metadata.tlv_size_of().unwrap();
-        let full_size = base_mint_size + metadata_size;
+    // --- 核心步骤 3：计算元数据内容的大小 ---
+    // tlv_size_of 计算的是：元数据本身（键值对）转换成 TLV 格式后占用的字节数
+    let metadata_size = token_metadata.tlv_size_of().unwrap();
+    
+    // --- 核心步骤 4：计算总空间 ---
+    // 最终账户需要的大小 = 基础 Mint 空间 + 容纳元数据的额外空间
+    let full_size = base_mint_size + metadata_size;
 
-        let rent = Rent::get()?;
-        let lamports = rent.minimum_balance(full_size);
-        let mint_size = base_mint_size;
+    // --- 核心步骤 5：计算租金（Rent） ---
+    let rent = Rent::get()?; // 获取当前链上的租金率
+    let lamports = rent.minimum_balance(full_size); // 计算该账户达到“免租金”所需的最低 SOL (lamports)
+    
+    // 注意：这里设置 mint_size 为基础大小，是因为后续初始化指令通常分两步走：
+    // 1. 先创建一个基础大小的账户。
+    // 2. 随后通过 realloc（重新分配空间）指令把元数据塞进去。
+    let mint_size = base_mint_size;
 
         // ── 步骤 2：创建账户 ────────────────────────────────────────────
         system_program::create_account(

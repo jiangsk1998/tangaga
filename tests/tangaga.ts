@@ -72,12 +72,12 @@ describe("tangaga", () => {
       .mintToWallet(new anchor.BN(mintAmount))
       .accounts({
         mint: mintKeypair.publicKey,
-        destinationAta: destinationAta,
+        // destinationAta: destinationAta,
         destinationWallet: destinationWallet.publicKey,
         authority: payer.publicKey,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        // systemProgram: SystemProgram.programId,
+        // tokenProgram: TOKEN_2022_PROGRAM_ID,
+        // associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       })
       .rpc();
 
@@ -124,12 +124,12 @@ describe("tangaga", () => {
       .mintToWallet(new anchor.BN(mintAmount))
       .accounts({
         mint: mintKeypair.publicKey,
-        destinationAta: senderAta,
+        // destinationAta: senderAta,
         destinationWallet: senderWallet.publicKey,
         authority: payer.publicKey,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        // systemProgram: SystemProgram.programId,
+        // tokenProgram: TOKEN_2022_PROGRAM_ID,
+        // associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       })
       .rpc();
 
@@ -139,13 +139,13 @@ describe("tangaga", () => {
       .transferTokens(new anchor.BN(transferAmount))
       .accounts({
         mint: mintKeypair.publicKey,
-        fromAta: senderAta,
-        toAta: receiverAta,
+        // fromAta: senderAta,
+        // toAta: receiverAta,
         toWallet: receiverWallet.publicKey,
         owner: senderWallet.publicKey,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        // systemProgram: SystemProgram.programId,
+        // tokenProgram: TOKEN_2022_PROGRAM_ID,
+        // associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       })
       .signers([senderWallet])
       .rpc();
@@ -179,14 +179,14 @@ describe("tangaga", () => {
         .accounts({
           mint: mintKeypair2.publicKey,
           authority: payer.publicKey,
-          systemProgram: SystemProgram.programId,
-          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          // systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_2022_PROGRAM_ID,
         })
         .signers([mintKeypair2])
         .rpc();
 
       throw new Error("应该因为名称过长而失败");
-    } catch (err) {
+    } catch (err:any) {
       console.log("预期的错误:", err.message);
       expect(err.message).to.include("NameTooLong");
     }
