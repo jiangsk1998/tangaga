@@ -5,6 +5,8 @@ use anchor_spl::{
     token_interface::TokenAccount,
 };
 
+use crate::error::CustomError;
+
 /// 2. mint_to_wallet — 铸造代币到指定钱包的 ATA
 pub fn mint_to_wallet(ctx: Context<MintToWallet>, amount: u64) -> Result<()> {
     require!(amount > 0, CustomError::ZeroAmount);

@@ -37,8 +37,8 @@ describe("tangaga", () => {
       .accounts({
         mint: mintKeypair.publicKey,
         authority: payer.publicKey,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        // systemProgram: SystemProgram.programId,
+        // tokenProgram: TOKEN_2022_PROGRAM_ID,
       })
       .signers([mintKeypair])
       .rpc();
@@ -186,9 +186,61 @@ describe("tangaga", () => {
         .rpc();
 
       throw new Error("应该因为名称过长而失败");
-    } catch (err:any) {
+    } catch (err: any) {
       console.log("预期的错误:", err.message);
       expect(err.message).to.include("NameTooLong");
     }
   });
+
+
+  it("授权", async () => {
+    const mintKeypair2 = Keypair.generate();
+
+    try {
+      await program.methods
+        .createToken(
+          "A".repeat(33), // 超过 32 个字符
+          "TNG",
+          "https://example.com/token.json",
+          6
+        )
+        .accounts({
+          mint: mintKeypair2.publicKey,
+          authority: payer.publicKey,
+          // systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_2022_PROGRAM_ID,
+        })
+        .signers([mintKeypair2])
+        .rpc();
+
+      throw new Error("应该因为名称过长而失败");
+    } catch (err: any) {
+      console.log("预期的错误:", err.message);
+      expect(err.message).to.include("NameTooLong");
+    }
+  });
+
+
+
+  it("授权转账", async () => {
+
+  });
+
+
+  it("取消授权", async () => {
+
+  });
+
+  it("销毁", async () => {
+
+  });
+
+
+  it("销户", async () => {
+    const mintKeypair2 = Keypair.generate();
+
+  });
+
+
+
 });

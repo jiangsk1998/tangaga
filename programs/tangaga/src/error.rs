@@ -18,4 +18,13 @@ pub enum CustomError {
 
     #[msg("不是授权的铸币者")]
     UnauthorizedMinter,
+
+    #[msg("不是代币的所有者")]
+    NotOwnerOfToken,
+
+    #[msg("余额不足，无法完成转账")]
+    InsufficientFunds,
+    
+    #[msg("转入账户的 mint 与预期不匹配")]
+    MintMismatch,
 }
