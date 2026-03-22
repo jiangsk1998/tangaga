@@ -94,6 +94,6 @@ pub mod tangaga {
     //        - 只有 owner 可以关闭
     // 7. 实现关闭账户（close_account）：回收创建 Token Account 的租金
     pub fn close_account(ctx: Context<CloseAccount>) -> Result<()> {
-        Ok(())
+        instructions::close_account::handle(ctx)
     }
 }
