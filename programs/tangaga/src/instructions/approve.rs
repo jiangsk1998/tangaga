@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    token::TokenAccount,
-    token_2022::{self, Approve, Token2022},
+    token_2022::{self, Approve, Token2022}, token_interface::TokenAccount,
 };
 
 use crate::error::CustomError;
@@ -17,7 +16,7 @@ pub struct ApproveDelegate<'info> {
         mut,
         constraint=token_account.owner==owner.key() @ CustomError::NotOwnerOfToken
     )]
-    pub token_account: Account<'info, TokenAccount>,
+    pub token_account: InterfaceAccount<'info, TokenAccount>,
 
     //被授权人  只存公钥 不需要验证
     ///CHECK: 被授权人不需要验证

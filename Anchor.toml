@@ -11,6 +11,12 @@ tangaga = "FZLKFcWiZbyyPqpyoG1uA1APveJC6Ex5e93wmaf63L9C"
 [programs.devnet]
 tangaga = "FZLKFcWiZbyyPqpyoG1uA1APveJC6Ex5e93wmaf63L9C"
 
+[programs.Testnet]
+tangaga = "FZLKFcWiZbyyPqpyoG1uA1APveJC6Ex5e93wmaf63L9C"
+
+[programs.mainnet]
+tangaga = "FZLKFcWiZbyyPqpyoG1uA1APveJC6Ex5e93wmaf63L9C"
+
 [test]
 startup_wait = 10000
 validator_startup_timeout = 30000
@@ -19,8 +25,12 @@ validator_startup_timeout = 30000
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+# cluster = "localnet"
+cluster = "https://devnet.helius-rpc.com/?api-key=80532ac2-cbbc-4847-90ba-a403778421ec"
+# cluster = "testnet"
+# cluster = "devnet"
 wallet = "~/.config/solana/id.json"
+priority_fee = 1000
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""

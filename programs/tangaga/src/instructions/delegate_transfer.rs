@@ -1,7 +1,7 @@
 use anchor_lang::prelude::{program_option::COption, *};
 use anchor_spl::{
-    token::{Mint, TokenAccount},
-    token_2022::{self, Token2022},
+    token::Mint,
+    token_2022::{self, Token2022}, token_interface::TokenAccount,
 };
 
 use crate::error::CustomError;
@@ -39,17 +39,20 @@ pub struct DelegateTransfer<'info> {
         //校验是否是被授权人
         constraint=from_ata.delegate==COption::Some(delegate.key()) @ CustomError::NotOwnerOfToken
     )]
-    pub from_ata: Account<'info, TokenAccount>,
+    pub from_ata: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         init_if_needed,
         payer = delegate,
-        token::mint = mint,
-        token::authority = to_owner,
+        associated_token::mint = mint,
+        associated_token::authority = to_owner,
+        associated_token::token_program = token_program,
     )]
-    pub to_ata: Account<'info, TokenAccount>,
+    pub to_ata: InterfaceAccount<'info, TokenAccount>,
 
-    pub mint: Account<'info, Mint>,
+    /// CHECK: Token-2022 mint
+    #[account(mut)]
+    pub mint: UncheckedAccount<'info>,
 
     pub to_owner: SystemAccount<'info>,
 

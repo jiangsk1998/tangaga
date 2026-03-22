@@ -1,5 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{token_2022::{self, Burn, Token2022}, token_interface::TokenAccount};
+use anchor_spl::{
+    token_2022::{self, Burn, Token2022},
+    token_interface::TokenAccount,
+};
 
 pub fn handle(ctx: Context<BurnToken>, amount: u64) -> Result<()> {
     let cpi_accounts = Burn {
@@ -35,6 +38,4 @@ pub struct BurnToken<'info> {
     pub owner: Signer<'info>,
 
     pub token_program: Program<'info, Token2022>,
-
-    
 }

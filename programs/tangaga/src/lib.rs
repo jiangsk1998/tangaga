@@ -52,7 +52,7 @@ pub mod tangaga {
         instructions::approve::handle(ctx, amount)
     }
 
-    pub fn evoke(ctx: Context<RevokeDelegate>) -> Result<()> {
+    pub fn revoke(ctx: Context<RevokeDelegate>) -> Result<()> {
         instructions::revoke::handle(ctx)
     }
 

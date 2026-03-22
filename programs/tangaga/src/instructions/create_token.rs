@@ -11,6 +11,20 @@ use anchor_spl::token_interface::TokenMetadataInitialize;
 
 use crate::error::CustomError;
 
+#[derive(Accounts)]
+#[instruction(name: String, symbol: String, uri: String, decimals: u8)]
+pub struct CreateToken<'info> {
+    /// CHECK: 在指令逻辑中手动 create_account + initialize
+    #[account(mut)]
+    pub mint: Signer<'info>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token2022>,
+}
+
 pub fn create_token(
     ctx: Context<CreateToken>,
     name: String,
@@ -106,16 +120,3 @@ pub fn create_token(
     Ok(())
 }
 
-#[derive(Accounts)]
-#[instruction(name: String, symbol: String, uri: String, decimals: u8)]
-pub struct CreateToken<'info> {
-    /// CHECK: 在指令逻辑中手动 create_account + initialize
-    #[account(mut)]
-    pub mint: Signer<'info>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token2022>,
-}
